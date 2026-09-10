@@ -8,6 +8,15 @@ export type ChatMessage = {
 
 export class OllamaError extends Error {}
 
+export function normalizeAuthHeader(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  // A bare token has no whitespace; anything with a space is assumed to already
+  // be a full "Scheme value" header (possibly a custom scheme) and is left as-is.
+  if (/\s/.test(trimmed)) return trimmed;
+  return `Bearer ${trimmed}`;
+}
+
 /**
  * Streams a chat completion from Ollama's /api/chat endpoint.
  * Ollama sends newline-delimited JSON (NDJSON): one {message, done} object per line.
@@ -22,7 +31,8 @@ export async function streamChat(
   const url = `${settings.baseUrl.replace(/\/+$/, '')}/api/chat`;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (settings.authHeader.trim()) headers.Authorization = settings.authHeader.trim();
+  const authHeader = normalizeAuthHeader(settings.authHeader);
+  if (authHeader) headers.Authorization = authHeader;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -72,7 +82,8 @@ export async function testConnection(
 ): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
   const url = `${settings.baseUrl.replace(/\/+$/, '')}/api/tags`;
   const headers: Record<string, string> = {};
-  if (settings.authHeader.trim()) headers.Authorization = settings.authHeader.trim();
+  const authHeader = normalizeAuthHeader(settings.authHeader);
+  if (authHeader) headers.Authorization = authHeader;
 
   try {
     const response = await fetch(url, { headers });

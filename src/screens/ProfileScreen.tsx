@@ -21,6 +21,7 @@ export default function ProfileScreen() {
   const [testResult, setTestResult] = useState<
     { ok: true; models: string[] } | { ok: false; error: string } | null
   >(null);
+  const [showAuthHeader, setShowAuthHeader] = useState(false);
 
   useEffect(() => {
     loadSettings().then(setDraft);
@@ -96,15 +97,20 @@ export default function ProfileScreen() {
         />
 
         <Text style={styles.label}>{t.authHeader}</Text>
-        <TextInput
-          style={styles.input}
-          value={draft.authHeader}
-          onChangeText={(v) => onChange({ authHeader: v })}
-          placeholder="Bearer xxxxx"
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-        />
+        <View style={styles.authRow}>
+          <TextInput
+            style={[styles.input, styles.authInput]}
+            value={draft.authHeader}
+            onChangeText={(v) => onChange({ authHeader: v })}
+            placeholder="Bearer xxxxx"
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry={!showAuthHeader}
+          />
+          <Pressable style={styles.eyeBtn} onPress={() => setShowAuthHeader((s) => !s)}>
+            <Text style={styles.eyeBtnText}>{showAuthHeader ? '🙈' : '👁️'}</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.actions}>
           <Pressable style={[styles.btn, styles.testBtn]} onPress={onTest} disabled={testing}>
@@ -176,6 +182,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
+  authRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  authInput: { flex: 1 },
+  eyeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+  },
+  eyeBtnText: { fontSize: 16 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   btn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   testBtn: { backgroundColor: '#eef4ff', borderWidth: 1, borderColor: '#0a84ff' },
