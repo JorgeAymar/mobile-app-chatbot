@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { streamChat } from '../lib/ollama';
+import { chatViaClaude } from '../lib/claude';
 import { DEFAULT_SETTINGS, Settings, loadSettings } from '../lib/settings';
 import { useI18n } from '../lib/i18n';
 import {
@@ -102,7 +103,8 @@ export default function ChatScreen({
     let finalMessages = withAssistant;
 
     try {
-      await streamChat(
+      const respond = settings.useClaudeRouting ? chatViaClaude : streamChat;
+      await respond(
         settings,
         history.map(({ role, content }) => ({ role, content })),
         (delta) => {

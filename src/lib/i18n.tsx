@@ -33,6 +33,9 @@ const dict = {
     messages: 'messages',
     newConversation: 'New conversation',
     appearance: 'Appearance',
+    claudeRouting: 'Claude routing',
+    claudeRoutingDesc: 'Route every question through Claude, which calls your Ollama server to resolve it and presents the final answer.',
+    anthropicApiKey: 'Anthropic API key',
   },
   es: {
     chat: 'Chat',
@@ -65,6 +68,9 @@ const dict = {
     messages: 'mensajes',
     newConversation: 'Nueva conversación',
     appearance: 'Apariencia',
+    claudeRouting: 'Enrutamiento por Claude',
+    claudeRoutingDesc: 'Cada pregunta pasa primero por Claude, que consulta tu servidor Ollama para resolverla y presenta la respuesta final.',
+    anthropicApiKey: 'API key de Anthropic',
   },
 } as const;
 

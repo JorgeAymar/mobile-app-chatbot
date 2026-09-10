@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -22,6 +23,7 @@ export default function ProfileScreen() {
     { ok: true; models: string[] } | { ok: false; error: string } | null
   >(null);
   const [showAuthHeader, setShowAuthHeader] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     loadSettings().then(setDraft);
@@ -73,6 +75,35 @@ export default function ProfileScreen() {
             <Text style={[styles.langBtnText, lang === 'es' && styles.langBtnTextActive]}>Español</Text>
           </Pressable>
         </View>
+
+        <Text style={[styles.section, { marginTop: 24 }]}>{t.claudeRouting}</Text>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchDesc}>{t.claudeRoutingDesc}</Text>
+          <Switch
+            value={draft.useClaudeRouting}
+            onValueChange={(v) => onChange({ useClaudeRouting: v })}
+          />
+        </View>
+
+        {draft.useClaudeRouting && (
+          <>
+            <Text style={styles.label}>{t.anthropicApiKey}</Text>
+            <View style={styles.authRow}>
+              <TextInput
+                style={[styles.input, styles.authInput]}
+                value={draft.anthropicApiKey}
+                onChangeText={(v) => onChange({ anthropicApiKey: v })}
+                placeholder="sk-ant-..."
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showApiKey}
+              />
+              <Pressable style={styles.eyeBtn} onPress={() => setShowApiKey((s) => !s)}>
+                <Text style={styles.eyeBtnText}>{showApiKey ? '🙈' : '👁️'}</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
 
         <Text style={[styles.section, { marginTop: 24 }]}>{t.remoteServer}</Text>
 
@@ -182,6 +213,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  switchDesc: { flex: 1, fontSize: 13, color: '#555' },
   authRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authInput: { flex: 1 },
   eyeBtn: {

@@ -7,6 +7,8 @@ export type Settings = {
   model: string;
   authHeader: string; // optional, e.g. "Bearer xxx" or "Basic xxx" if your reverse proxy requires it
   language: Language;
+  useClaudeRouting: boolean; // when true, questions go through Claude, which calls Ollama as a tool
+  anthropicApiKey: string;
 };
 
 const STORAGE_KEY = 'ollama_chat_settings';
@@ -14,9 +16,11 @@ const STORAGE_KEY = 'ollama_chat_settings';
 export const DEFAULT_SETTINGS: Settings = {
   baseUrl: 'https://ollama.labshub.cc',
   model: 'gpt-oss:20b-cloud',
-  // Don't hardcode the token here: set it from the Profile tab (stored on-device only).
+  // Don't hardcode secrets here: set them from the Profile tab (stored on-device only).
   authHeader: '',
   language: 'en',
+  useClaudeRouting: false,
+  anthropicApiKey: '',
 };
 
 export async function loadSettings(): Promise<Settings> {
