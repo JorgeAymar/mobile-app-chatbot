@@ -67,6 +67,26 @@ export async function streamChat(
   return full;
 }
 
+export async function testConnection(
+  settings: Settings
+): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
+  const url = `${settings.baseUrl.replace(/\/+$/, '')}/api/tags`;
+  const headers: Record<string, string> = {};
+  if (settings.authHeader.trim()) headers.Authorization = settings.authHeader.trim();
+
+  try {
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      return { ok: false, error: `HTTP ${response.status}` };
+    }
+    const json = await response.json();
+    const models: string[] = (json.models ?? []).map((m: any) => m.name);
+    return { ok: true, models };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? 'No se pudo conectar' };
+  }
+}
+
 function consumeLine(line: string, onToken: (delta: string) => void): string {
   try {
     const json = JSON.parse(line);

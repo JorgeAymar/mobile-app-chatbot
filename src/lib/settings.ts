@@ -1,9 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type Language = 'en' | 'es';
+
 export type Settings = {
   baseUrl: string;
   model: string;
   authHeader: string; // optional, e.g. "Bearer xxx" or "Basic xxx" if your reverse proxy requires it
+  language: Language;
 };
 
 const STORAGE_KEY = 'ollama_chat_settings';
@@ -11,8 +14,9 @@ const STORAGE_KEY = 'ollama_chat_settings';
 export const DEFAULT_SETTINGS: Settings = {
   baseUrl: 'https://ollama.labshub.cc',
   model: 'gpt-oss:20b-cloud',
-  // No pongas el token aquí: configúralo desde la pantalla de ⚙️ (se guarda solo en el dispositivo).
+  // Don't hardcode the token here: set it from the Profile tab (stored on-device only).
   authHeader: '',
+  language: 'en',
 };
 
 export async function loadSettings(): Promise<Settings> {

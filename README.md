@@ -1,92 +1,104 @@
-# mobile-app-chatbot
+# Orion Chat IA
 
-Chat móvil en React Native (Expo) conectado a un servidor [Ollama](https://ollama.com) propio, con respuestas en streaming (token por token).
+A mobile chat app built with React Native (Expo), connected to a self-hosted [Ollama](https://ollama.com) server, with streaming (token-by-token) responses.
+
+> Repo: `mobile-app-chatbot` · App: **Orion Chat IA**
 
 ## Stack
 
 - **Expo SDK 57** + React Native 0.86 + TypeScript
-- `expo/fetch` — fetch con soporte de `ReadableStream`, usado para consumir el streaming NDJSON de Ollama
-- `@react-native-async-storage/async-storage` — persistencia local de la configuración (URL, modelo, header de auth)
-- `react-native-safe-area-context` — manejo de safe areas
+- `expo/fetch` — fetch with `ReadableStream` support, used to consume Ollama's NDJSON stream
+- `@react-native-async-storage/async-storage` — local persistence for settings, chat history, and language
+- `react-native-safe-area-context` — safe area handling
 
-## Estructura
+## Structure
 
 ```
-App.tsx                     # Entry point, envuelve SafeAreaProvider + ChatScreen
+App.tsx                       # Entry point: SafeAreaProvider + LanguageProvider + tab navigation
 src/
   screens/
-    ChatScreen.tsx           # UI de chat: lista de mensajes, input, modal de configuración
+    ChatScreen.tsx             # Chat UI: message list, input, streaming, autosave to history
+    HistoryScreen.tsx          # List of saved conversations, tap to reopen, delete/clear
+    ProfileScreen.tsx          # Remote LLM settings (URL/model/auth) + language switch + connection test
   lib/
-    ollama.ts                # Cliente que hace streaming contra /api/chat de Ollama
-    settings.ts               # Tipos + persistencia de configuración en AsyncStorage
+    ollama.ts                  # Streaming client for /api/chat + testConnection() for /api/tags
+    settings.ts                # Types + persistence for LLM connection settings and language
+    history.ts                 # Types + persistence for saved conversations
+    i18n.tsx                   # Lightweight translation dictionary (en/es) + LanguageProvider/useI18n
 ```
 
-### Flujo de datos
+### Screens
 
-1. El usuario escribe un mensaje en `ChatScreen` → se agrega al historial local.
-2. `streamChat()` (`src/lib/ollama.ts`) hace `POST {baseUrl}/api/chat` con `{ model, messages, stream: true }`.
-3. Ollama responde con **NDJSON** (una línea = un JSON `{ message: { content }, done }`).
-4. Se lee el `body` como `ReadableStream`, se decodifica por chunks y se parsea línea por línea; cada `content` delta se agrega en vivo al mensaje del asistente vía `onToken`.
-5. Al terminar (`done: true` o fin del stream), se devuelve el texto completo.
+- **Chat** — the main conversation view. Streams the assistant's reply token by token and autosaves the conversation to history after each exchange. "+ New" starts a fresh conversation.
+- **History** — lists saved conversations (title, message count, last-updated time). Tap to reopen a conversation in Chat; swipe/long-press or tap ✕ to delete one; 🗑️ in the header clears everything.
+- **Profile** — holds the **remote LLM configuration** (server URL, model, optional `Authorization` header) plus a **Test connection** button that hits `/api/tags` and lists the models the server reports. Also has the **language** switch (English/Español).
 
-## Requisitos previos
+### Data flow
+
+1. The user types a message in `ChatScreen` → it's appended to the local conversation.
+2. `streamChat()` (`src/lib/ollama.ts`) does `POST {baseUrl}/api/chat` with `{ model, messages, stream: true }`.
+3. Ollama responds with **NDJSON** (one line = one JSON object `{ message: { content }, done }`; "thinking" models also emit a `thinking` field for reasoning tokens, which is ignored).
+4. The `body` is read as a `ReadableStream`, decoded chunk by chunk and parsed line by line; each `content` delta is appended live to the assistant's message via `onToken`.
+5. When the stream ends (`done: true`), the conversation (all messages) is upserted into history (`src/lib/history.ts`) in AsyncStorage.
+
+## Prerequisites
 
 - Node.js + npm
-- Xcode (simulador iOS) y/o Android Studio (emulador Android)
-- Un servidor Ollama accesible por HTTPS (ver sección VPS más abajo)
-- [Expo Orbit](https://expo.dev/orbit) (opcional, para lanzar simuladores/dispositivos fácilmente)
+- Xcode (iOS simulator) and/or Android Studio (Android emulator)
+- An Ollama server reachable over HTTPS (see the VPS section below)
+- [Expo Orbit](https://expo.dev/orbit) (optional, for quickly launching simulators/devices)
 
-## Cómo correr la app
+## Running the app
 
 ```bash
 npm install
-npm run ios       # abre el simulador de iOS
-npm run android    # abre el emulador de Android
-npm run web        # versión web (limitada, pensada para mobile)
+npm run ios       # opens the iOS simulator
+npm run android    # opens the Android emulator
+npm run web        # web build (limited, this app targets mobile)
 ```
 
-Esto levanta el bundler de Metro en `http://localhost:8081`.
+This starts the Metro bundler on `http://localhost:8081`.
 
-### Configurar la conexión a Ollama
+### Configuring the Ollama connection
 
-La app **no trae credenciales embebidas**. Al abrir el chat, toca el ícono ⚙️ (arriba a la derecha) y completa:
+The app **ships with no embedded credentials**. Open the **Profile** tab and fill in:
 
-| Campo | Ejemplo | Notas |
+| Field | Example | Notes |
 |---|---|---|
-| URL del servidor | `https://ollama.labshub.cc` | Debe ser HTTPS en producción; sin `/` al final |
-| Modelo | `gpt-oss:20b-cloud` | Debe existir en el servidor (`GET /api/tags` lista los disponibles) |
-| Authorization (opcional) | `Bearer <token>` | Solo si tu proxy/servidor exige autenticación |
+| Server URL | `https://ollama.labshub.cc` | Must be HTTPS in production; no trailing `/` |
+| Model | `gpt-oss:20b-cloud` | Must exist on the server (`GET /api/tags` lists what's available) |
+| Authorization (optional) | `Bearer <token>` | Only needed if your reverse proxy/server enforces auth |
 
-Estos valores se guardan **solo en el dispositivo** (`AsyncStorage`), nunca en el código ni en git.
+Tap **Test connection** to verify the server responds before chatting. These values are saved **on-device only** (`AsyncStorage`), never in the code or in git.
 
-### Verificar el servidor manualmente
+### Verifying the server manually
 
 ```bash
-curl -H "Authorization: Bearer <tu-token>" https://ollama.labshub.cc/api/tags
+curl -H "Authorization: Bearer <your-token>" https://ollama.labshub.cc/api/tags
 ```
 
-Debe responder `200` con un JSON listando los modelos disponibles.
+Should return `200` with a JSON list of available models.
 
-## Servidor Ollama en el VPS
+## Ollama server on the VPS
 
-Este proyecto asume que ya tienes Ollama corriendo detrás de un reverse proxy (nginx/caddy) con:
+This project assumes Ollama is already running behind a reverse proxy (nginx/caddy) with:
 
-- Dominio propio + certificado HTTPS (Let's Encrypt u otro)
-- El puerto nativo de Ollama (`11434`) **no** expuesto directamente a internet
-- Opcionalmente, un header `Authorization` validado en el proxy antes de reenviar a Ollama, ya que Ollama por sí mismo no implementa autenticación
+- Its own domain + HTTPS certificate (Let's Encrypt or similar)
+- Ollama's native port (`11434`) **not** exposed directly to the internet
+- Optionally, an `Authorization` header validated at the proxy before forwarding to Ollama, since Ollama itself has no built-in authentication
 
-En este caso el servidor (`ollama.labshub.cc`) expone modelos tipo `*-cloud`, que Ollama reenvía a `ollama.com` en vez de ejecutarlos localmente en el VPS — es decir, la inferencia real corre en la nube de Ollama, no en el hardware del VPS.
+In this setup, the server (`ollama.labshub.cc`) exposes `*-cloud` models, which Ollama forwards to `ollama.com` instead of running locally — i.e. inference actually happens in Ollama's cloud, not on the VPS hardware.
 
-## Seguridad
+## Security
 
-- **Nunca** commitees tokens/API keys al código — van solo en `AsyncStorage` vía la pantalla de configuración.
-- Si un token queda expuesto (por ejemplo, pegado en un chat, log o commit), rótalo en el servidor lo antes posible.
-- El repo es público: antes de cada push, revisa `git status`/`git diff` para asegurarte de que no se cuele ninguna credencial.
-- Considera limitar el acceso al endpoint de Ollama (rate limiting, IP allowlist, o auth obligatoria en el proxy) para evitar abuso de cómputo por terceros.
+- **Never** commit tokens/API keys to the code — they only live in `AsyncStorage`, set from the Profile tab.
+- If a token is ever exposed (pasted in a chat, a log, or a commit), rotate it on the server as soon as possible.
+- The repo is public: check `git status`/`git diff` before every push to make sure no credential sneaks in.
+- Consider restricting access to the Ollama endpoint (rate limiting, IP allowlist, or mandatory auth at the proxy) to prevent third parties from abusing your compute.
 
-## Roadmap / posibles mejoras
+## Roadmap / possible improvements
 
-- Persistir el historial de conversación entre sesiones
-- Selector de modelo dentro del chat (poblado desde `/api/tags`)
-- Manejo de múltiples conversaciones
-- Indicador de "escribiendo…" más granular / markdown rendering en las respuestas
+- Model picker inside Chat, populated from `/api/tags`
+- Markdown rendering for assistant responses
+- More granular "typing…" indicator
+- Additional languages beyond English/Spanish

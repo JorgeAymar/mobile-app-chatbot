@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,28 +11,74 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChatMessage, streamChat } from '../lib/ollama';
-import { DEFAULT_SETTINGS, Settings, loadSettings, saveSettings } from '../lib/settings';
+import { streamChat } from '../lib/ollama';
+import { DEFAULT_SETTINGS, Settings, loadSettings } from '../lib/settings';
+import { useI18n } from '../lib/i18n';
+import {
+  Conversation,
+  StoredMessage,
+  loadConversations,
+  titleFromMessages,
+  upsertConversation,
+} from '../lib/history';
 
-type Message = ChatMessage & { id: string };
-
-export default function ChatScreen() {
+export default function ChatScreen({
+  conversationId,
+  onConversationChange,
+}: {
+  conversationId: string | null;
+  onConversationChange: (id: string) => void;
+}) {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const listRef = useRef<FlatList<Message>>(null);
+  const listRef = useRef<FlatList<StoredMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const idRef = useRef<string | null>(conversationId);
+  const createdAtRef = useRef<number>(Date.now());
 
   useEffect(() => {
     loadSettings().then(setSettings);
   }, []);
 
+  useEffect(() => {
+    idRef.current = conversationId;
+    if (!conversationId) {
+      setMessages([]);
+      createdAtRef.current = Date.now();
+      return;
+    }
+    loadConversations().then((list) => {
+      const found = list.find((c) => c.id === conversationId);
+      if (found) {
+        setMessages(found.messages);
+        createdAtRef.current = found.createdAt;
+      }
+    });
+  }, [conversationId]);
+
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
+
+  const persist = useCallback(async (msgs: StoredMessage[]) => {
+    if (!msgs.length) return;
+    if (!idRef.current) {
+      idRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      onConversationChange(idRef.current);
+    }
+    const conversation: Conversation = {
+      id: idRef.current,
+      title: titleFromMessages(msgs, t.newConversation),
+      messages: msgs,
+      createdAt: createdAtRef.current,
+      updatedAt: Date.now(),
+    };
+    await upsertConversation(conversation);
+  }, [onConversationChange, t.newConversation]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -42,48 +87,63 @@ export default function ChatScreen() {
     setError(null);
     setInput('');
 
-    const userMsg: Message = { id: `${Date.now()}-u`, role: 'user', content: text };
+    const userMsg: StoredMessage = { id: `${Date.now()}-u`, role: 'user', content: text };
     const assistantId = `${Date.now()}-a`;
     const history = [...messages, userMsg];
 
-    setMessages([...history, { id: assistantId, role: 'assistant', content: '' }]);
+    const withAssistant = [...history, { id: assistantId, role: 'assistant' as const, content: '' }];
+    setMessages(withAssistant);
     setSending(true);
     scrollToEnd();
 
     const controller = new AbortController();
     abortRef.current = controller;
 
+    let finalMessages = withAssistant;
+
     try {
       await streamChat(
         settings,
         history.map(({ role, content }) => ({ role, content })),
         (delta) => {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m))
-          );
+          setMessages((prev) => {
+            const next = prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m));
+            finalMessages = next;
+            return next;
+          });
           scrollToEnd();
         },
         controller.signal
       );
+      await persist(finalMessages);
     } catch (err: any) {
       setError(err?.message ?? 'Error al conectar con Ollama');
-      setMessages((prev) => prev.filter((m) => m.id !== assistantId || m.content));
+      const withoutEmpty = withAssistant.filter((m) => m.id !== assistantId || m.content);
+      setMessages(withoutEmpty);
+      if (withoutEmpty.length) await persist(withoutEmpty);
     } finally {
       setSending(false);
       abortRef.current = null;
     }
-  }, [input, sending, messages, settings, scrollToEnd]);
+  }, [input, sending, messages, settings, scrollToEnd, persist]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
+  const newChat = useCallback(() => {
+    idRef.current = null;
+    createdAtRef.current = Date.now();
+    setMessages([]);
+    setError(null);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Ollama Chat</Text>
-        <Pressable onPress={() => setSettingsOpen(true)} hitSlop={12}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+        <Text style={styles.title}>Orion Chat IA</Text>
+        <Pressable onPress={newChat} hitSlop={12}>
+          <Text style={styles.newChat}>{t.newChat}</Text>
         </Pressable>
       </View>
 
@@ -110,7 +170,7 @@ export default function ChatScreen() {
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder="Escribe un mensaje…"
+            placeholder={t.typeMessage}
             placeholderTextColor="#999"
             multiline
             editable={!sending}
@@ -121,90 +181,12 @@ export default function ChatScreen() {
             </Pressable>
           ) : (
             <Pressable style={styles.sendBtn} onPress={send} disabled={!input.trim()}>
-              <Text style={styles.sendText}>Enviar</Text>
+              <Text style={styles.sendText}>{t.send}</Text>
             </Pressable>
           )}
         </View>
       </KeyboardAvoidingView>
-
-      <SettingsModal
-        visible={settingsOpen}
-        settings={settings}
-        onClose={() => setSettingsOpen(false)}
-        onSave={async (s) => {
-          setSettings(s);
-          await saveSettings(s);
-          setSettingsOpen(false);
-        }}
-      />
     </SafeAreaView>
-  );
-}
-
-function SettingsModal({
-  visible,
-  settings,
-  onClose,
-  onSave,
-}: {
-  visible: boolean;
-  settings: Settings;
-  onClose: () => void;
-  onSave: (s: Settings) => void;
-}) {
-  const [draft, setDraft] = useState(settings);
-
-  useEffect(() => {
-    if (visible) setDraft(settings);
-  }, [visible, settings]);
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Configuración</Text>
-
-          <Text style={styles.label}>URL del servidor (VPS)</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={draft.baseUrl}
-            onChangeText={(v) => setDraft({ ...draft, baseUrl: v })}
-            placeholder="https://tu-dominio.com"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <Text style={styles.label}>Modelo</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={draft.model}
-            onChangeText={(v) => setDraft({ ...draft, model: v })}
-            placeholder="llama3.1"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <Text style={styles.label}>Header Authorization (opcional)</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={draft.authHeader}
-            onChangeText={(v) => setDraft({ ...draft, authHeader: v })}
-            placeholder="Bearer xxxxx"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <View style={styles.modalActions}>
-            <Pressable style={[styles.modalBtn, styles.modalCancel]} onPress={onClose}>
-              <Text style={styles.modalBtnText}>Cancelar</Text>
-            </Pressable>
-            <Pressable style={[styles.modalBtn, styles.modalSave]} onPress={() => onSave(draft)}>
-              <Text style={[styles.modalBtnText, { color: '#fff' }]}>Guardar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -220,7 +202,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#ddd',
   },
   title: { fontSize: 18, fontWeight: '600' },
-  settingsIcon: { fontSize: 20 },
+  newChat: { fontSize: 14, color: '#0a84ff', fontWeight: '600' },
   list: { padding: 12, gap: 8 },
   bubble: { maxWidth: '85%', padding: 10, borderRadius: 12, marginBottom: 8 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#0a84ff' },
@@ -255,21 +237,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sendText: { color: '#fff', fontWeight: '600' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  label: { fontSize: 13, color: '#555', marginBottom: 4, marginTop: 10 },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  modalCancel: { backgroundColor: '#eee' },
-  modalSave: { backgroundColor: '#0a84ff' },
-  modalBtnText: { fontWeight: '600' },
 });
